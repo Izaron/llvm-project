@@ -1390,6 +1390,7 @@ Parser::isCXXDeclarationSpecifier(Parser::TPResult BracedCastResult,
   case tok::kw_struct:
   case tok::kw_union:
   case tok::kw___interface:
+  case tok::kw_defer:
     // enum-specifier
   case tok::kw_enum:
     // cv-qualifier

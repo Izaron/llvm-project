@@ -4427,9 +4427,9 @@ bool Sema::checkVarDeclRedefinition(VarDecl *Old, VarDecl *New) {
 /// no declarator (e.g. "struct foo;") is parsed.
 Decl *
 Sema::ParsedFreeStandingDeclSpec(Scope *S, AccessSpecifier AS, DeclSpec &DS,
-                                 RecordDecl *&AnonRecord) {
+                                 RecordDecl *&AnonRecord, bool IsDefer) {
   return ParsedFreeStandingDeclSpec(S, AS, DS, MultiTemplateParamsArg(), false,
-                                    AnonRecord);
+                                    AnonRecord, IsDefer);
 }
 
 // The MS ABI changed between VS2013 and VS2015 with regard to numbers used to
@@ -4646,7 +4646,8 @@ Decl *
 Sema::ParsedFreeStandingDeclSpec(Scope *S, AccessSpecifier AS, DeclSpec &DS,
                                  MultiTemplateParamsArg TemplateParams,
                                  bool IsExplicitInstantiation,
-                                 RecordDecl *&AnonRecord) {
+                                 RecordDecl *&AnonRecord,
+                                 bool IsDefer) {
   Decl *TagD = nullptr;
   TagDecl *Tag = nullptr;
   if (DS.getTypeSpecType() == DeclSpec::TST_class ||
@@ -4752,7 +4753,8 @@ Sema::ParsedFreeStandingDeclSpec(Scope *S, AccessSpecifier AS, DeclSpec &DS,
         if (CurContext->isFunctionOrMethod())
           AnonRecord = Record;
         return BuildAnonymousStructOrUnion(S, DS, AS, Record,
-                                           Context.getPrintingPolicy());
+                                           Context.getPrintingPolicy(),
+                                           IsDefer);
       }
 
       DeclaresAnything = false;
@@ -5067,7 +5069,8 @@ static void checkDuplicateDefaultInit(Sema &S, CXXRecordDecl *Parent,
 Decl *Sema::BuildAnonymousStructOrUnion(Scope *S, DeclSpec &DS,
                                         AccessSpecifier AS,
                                         RecordDecl *Record,
-                                        const PrintingPolicy &Policy) {
+                                        const PrintingPolicy &Policy,
+                                        bool IsDefer) {
   DeclContext *Owner = Record->getDeclContext();
 
   // Diagnose whether this anonymous struct/union is an extension.
@@ -5206,9 +5209,9 @@ Decl *Sema::BuildAnonymousStructOrUnion(Scope *S, DeclSpec &DS,
         // Any access specifier is fine.
       } else if (isa<StaticAssertDecl>(Mem)) {
         // In C++1z, static_assert declarations are also fine.
-      } else {
+      } else if (!IsDefer) {
         // We have something that isn't a non-static data
-        // member. Complain about it.
+        // member and is not a defer-struct. Complain about it.
         unsigned DK = diag::err_anonymous_record_bad_member;
         if (isa<TypeDecl>(Mem))
           DK = diag::err_anonymous_record_with_type;
@@ -5238,7 +5241,7 @@ Decl *Sema::BuildAnonymousStructOrUnion(Scope *S, DeclSpec &DS,
                                 cast<CXXRecordDecl>(Record));
   }
 
-  if (!Record->isUnion() && !Owner->isRecord()) {
+  if (!IsDefer && !Record->isUnion() && !Owner->isRecord()) {
     Diag(Record->getLocation(), diag::err_anonymous_struct_not_member)
       << getLangOpts().CPlusPlus;
     Invalid = true;
@@ -5253,7 +5256,9 @@ Decl *Sema::BuildAnonymousStructOrUnion(Scope *S, DeclSpec &DS,
   //   name of the class or declare at least one unnamed bit-field
   //
   // For C this is an error even for a named struct, and is diagnosed elsewhere.
-  if (getLangOpts().CPlusPlus && Record->field_empty())
+  //
+  // defer-struct implicitly declares an anonymous variable
+  if (!IsDefer && getLangOpts().CPlusPlus && Record->field_empty())
     Diag(DS.getBeginLoc(), diag::ext_no_declarators) << DS.getSourceRange();
 
   // Mock up a declarator.

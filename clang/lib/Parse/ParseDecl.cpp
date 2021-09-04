@@ -1786,6 +1786,8 @@ Parser::DeclGroupPtrTy Parser::ParseSimpleDeclaration(
   // Parse the common declaration-specifiers piece.
   ParsingDeclSpec DS(*this);
 
+  const bool IsDefer = Tok.is(tok::kw_defer);
+
   DeclSpecContext DSContext = getDeclSpecContextFromDeclaratorContext(Context);
   ParseDeclarationSpecifiers(DS, ParsedTemplateInfo(), AS_none, DSContext);
 
@@ -1795,6 +1797,11 @@ Parser::DeclGroupPtrTy Parser::ParseSimpleDeclaration(
       DiagnoseMissingSemiAfterTagDefinition(DS, AS_none, DSContext))
     return nullptr;
 
+  if (IsDefer && !Tok.is(tok::semi)) {
+    Diag(Tok.getLocation(), diag::err_named_defer_variable);
+    return nullptr;
+  }
+
   // C99 6.7.2.3p6: Handle "struct-or-union identifier;", "enum { X };"
   // declaration-specifiers init-declarator-list[opt] ';'
   if (Tok.is(tok::semi)) {
@@ -1803,7 +1810,7 @@ Parser::DeclGroupPtrTy Parser::ParseSimpleDeclaration(
     if (RequireSemi) ConsumeToken();
     RecordDecl *AnonRecord = nullptr;
     Decl *TheDecl = Actions.ParsedFreeStandingDeclSpec(getCurScope(), AS_none,
-                                                       DS, AnonRecord);
+                                                       DS, AnonRecord, IsDefer);
     DS.complete(TheDecl);
     if (AnonRecord) {
       Decl* decls[] = {AnonRecord, TheDecl};
@@ -4017,7 +4024,8 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
     case tok::kw_class:
     case tok::kw_struct:
     case tok::kw___interface:
-    case tok::kw_union: {
+    case tok::kw_union:
+    case tok::kw_defer: {
       tok::TokenKind Kind = Tok.getKind();
       ConsumeToken();
 

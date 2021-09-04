@@ -87,6 +87,8 @@ def ext_nullability : Extension<
   InGroup<DiagGroup<"nullability-extension">>;
 
 def err_empty_enum : Error<"use of empty enum">;
+def err_named_defer_definition : Error<"defer structs should not have name">;
+def err_named_defer_variable : Error<"defer structs should not have variables">;
 
 def ext_ident_list_in_param : Extension<
   "type-less parameter names in function declaration">;

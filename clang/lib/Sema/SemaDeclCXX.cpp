@@ -13592,6 +13592,44 @@ CXXDestructorDecl *Sema::DeclareImplicitDestructor(CXXRecordDecl *ClassDecl) {
   return Destructor;
 }
 
+CXXDestructorDecl *Sema::DeclareUserDestructor(CXXRecordDecl *ClassDecl) {
+  DeclaringSpecialMember DSM(*this, ClassDecl, CXXDestructor);
+  if (DSM.isAlreadyBeingDeclared())
+    return nullptr;
+
+  // Create the actual destructor declaration.
+  CanQualType ClassType
+    = Context.getCanonicalType(Context.getTypeDeclType(ClassDecl));
+  SourceLocation ClassLoc = ClassDecl->getLocation();
+  DeclarationName Name
+    = Context.DeclarationNames.getCXXDestructorName(ClassType);
+  DeclarationNameInfo NameInfo(Name, ClassLoc);
+  ClassDecl->getDestructor();
+  CXXDestructorDecl *Destructor = CXXDestructorDecl::Create(
+      Context, ClassDecl, ClassLoc, NameInfo, QualType(), nullptr,
+      getCurFPFeatures().isFPConstrained(),
+      /*isInline=*/false,
+      /*isImplicitlyDeclared=*/false,
+      ConstexprSpecKind::Unspecified);
+  Destructor->setAccess(AS_public);
+
+  setupImplicitSpecialMemberType(Destructor, Context.VoidTy, None);
+
+  Destructor->setTrivial(false);
+
+  ++getASTContext().NumImplicitDestructorsDeclared;
+
+  Scope *S = getScopeForContext(ClassDecl);
+  CheckImplicitSpecialMemberDeclaration(S, Destructor);
+
+  // Introduce this destructor into its scope.
+  if (S)
+    PushOnScopeChains(Destructor, S, false);
+  ClassDecl->addDecl(Destructor);
+
+  return Destructor;
+}
+
 void Sema::DefineImplicitDestructor(SourceLocation CurrentLocation,
                                     CXXDestructorDecl *Destructor) {
   assert((Destructor->isDefaulted() &&

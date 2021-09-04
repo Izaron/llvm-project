@@ -3117,7 +3117,8 @@ private:
                                    SourceLocation AttrFixitLoc,
                                    ParsedAttributesWithRange &Attrs,
                                    unsigned TagType,
-                                   Decl *TagDecl);
+                                   Decl *TagDecl,
+                                   bool IsDefer = false);
   ExprResult ParseCXXMemberInitializer(Decl *D, bool IsFunction,
                                        SourceLocation &EqualLoc);
   bool

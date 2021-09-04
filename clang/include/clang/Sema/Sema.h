@@ -2984,16 +2984,18 @@ public:
   void ActOnTranslationUnitScope(Scope *S);
 
   Decl *ParsedFreeStandingDeclSpec(Scope *S, AccessSpecifier AS, DeclSpec &DS,
-                                   RecordDecl *&AnonRecord);
+                                   RecordDecl *&AnonRecord, bool IsDefer = false);
   Decl *ParsedFreeStandingDeclSpec(Scope *S, AccessSpecifier AS, DeclSpec &DS,
                                    MultiTemplateParamsArg TemplateParams,
                                    bool IsExplicitInstantiation,
-                                   RecordDecl *&AnonRecord);
+                                   RecordDecl *&AnonRecord,
+                                   bool IsDefer = false);
 
   Decl *BuildAnonymousStructOrUnion(Scope *S, DeclSpec &DS,
                                     AccessSpecifier AS,
                                     RecordDecl *Record,
-                                    const PrintingPolicy &Policy);
+                                    const PrintingPolicy &Policy,
+                                    bool IsDefer = false);
 
   Decl *BuildMicrosoftCAnonymousStruct(Scope *S, DeclSpec &DS,
                                        RecordDecl *Record);
@@ -5971,6 +5973,15 @@ public:
   ///
   /// \returns The implicitly-declared destructor.
   CXXDestructorDecl *DeclareImplicitDestructor(CXXRecordDecl *ClassDecl);
+
+  /// Declare an unevaluated "user-defined" destructor for the given class.
+  /// The caller should set method definition on his own
+  ///
+  /// \param ClassDecl The class declaration into which the unevaluated user-defined
+  /// destructor will be added.
+  ///
+  /// \returns The unevaluated user-defined destructor.
+  CXXDestructorDecl *DeclareUserDestructor(CXXRecordDecl *ClassDecl);
 
   /// DefineImplicitDestructor - Checks for feasibility of
   /// defining this destructor as the default destructor.

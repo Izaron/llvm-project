@@ -1456,7 +1456,8 @@ void Parser::ParseClassSpecifier(tok::TokenKind TagTokKind,
                                  bool EnteringContext, DeclSpecContext DSC,
                                  ParsedAttributesWithRange &Attributes) {
   DeclSpec::TST TagType;
-  if (TagTokKind == tok::kw_struct)
+  const bool IsDefer = TagTokKind == tok::kw_defer;
+  if (TagTokKind == tok::kw_struct || IsDefer)
     TagType = DeclSpec::TST_struct;
   else if (TagTokKind == tok::kw___interface)
     TagType = DeclSpec::TST_interface;
@@ -1987,6 +1988,13 @@ void Parser::ParseClassSpecifier(tok::TokenKind TagTokKind,
 
     stripTypeAttributesOffDeclSpec(attrs, DS, TUK);
 
+    // In case of "defer" it should not have name
+    if (IsDefer) {
+      if (Name != nullptr) {
+        Diag(NameLoc, diag::err_named_defer_definition);
+      }
+    }
+
     // Declaration or definition of a class type
     TagOrTempResult = Actions.ActOnTag(
         getCurScope(), TagType, TUK, StartLoc, SS, Name, NameLoc, attrs, AS,
@@ -2026,7 +2034,7 @@ void Parser::ParseClassSpecifier(tok::TokenKind TagTokKind,
                                  TagOrTempResult.get());
     else if (getLangOpts().CPlusPlus)
       ParseCXXMemberSpecification(StartLoc, AttrFixitLoc, attrs, TagType,
-                                  TagOrTempResult.get());
+                                  TagOrTempResult.get(), IsDefer);
     else {
       Decl *D =
           SkipBody.CheckSameAsPrevious ? SkipBody.New : TagOrTempResult.get();
@@ -3315,7 +3323,8 @@ Parser::DeclGroupPtrTy Parser::ParseCXXClassMemberDeclarationWithPragmas(
 void Parser::ParseCXXMemberSpecification(SourceLocation RecordLoc,
                                          SourceLocation AttrFixitLoc,
                                          ParsedAttributesWithRange &Attrs,
-                                         unsigned TagType, Decl *TagDecl) {
+                                         unsigned TagType, Decl *TagDecl,
+                                         bool IsDefer) {
   assert((TagType == DeclSpec::TST_struct ||
          TagType == DeclSpec::TST_interface ||
          TagType == DeclSpec::TST_union  ||
@@ -3482,6 +3491,59 @@ void Parser::ParseCXXMemberSpecification(SourceLocation RecordLoc,
   }
 
   assert(Tok.is(tok::l_brace));
+
+  // defer structs should have only destructor definition instead of whole class body
+  if (TagDecl && IsDefer) {
+    Actions.ActOnStartCXXMemberDeclarations(getCurScope(), TagDecl, FinalLoc,
+                                            IsFinalSpelledSealed, IsAbstract,
+                                            TagDecl->getBeginLoc());
+
+    // First pass - register user-defined destructor
+    CXXRecordDecl* ClassDecl = dyn_cast<CXXRecordDecl>(TagDecl);
+    CXXDestructorDecl* ClassDestructor = Actions.DeclareUserDestructor(ClassDecl);
+
+    // Second pass - add "late parsed" destructor body declaration
+    // I didn't found the method to get all tokens from "{ ... }", so I wrote the algo by hand
+    LexedMethod* LM = new LexedMethod(this, ClassDestructor);
+    getCurrentClass().LateParsedDeclarations.push_back(LM);
+    CachedTokens& Toks = LM->Toks;
+
+    Toks.push_back(Tok);
+    unsigned tokenIndex = 1;
+    unsigned bracesNum = 1;
+    while (bracesNum > 0) {
+        const Token& t = GetLookAheadToken(tokenIndex);
+        Toks.push_back(t);
+        if (t.is(tok::l_brace)) {
+            ++bracesNum;
+        } else if (t.is(tok::r_brace)) {
+            --bracesNum;
+        }
+        ++tokenIndex;
+    }
+
+    // Finish defer struct definition
+    ParsedAttributes attrs(AttrFactory);
+    Actions.ActOnFinishCXXMemberSpecification(getCurScope(), RecordLoc, TagDecl,
+                                              TagDecl->getBeginLoc(),
+                                              TagDecl->getEndLoc(), attrs);
+
+    ParseLexedMethodDefs(getCurrentClass());
+
+    Actions.ActOnTagFinishDefinition(getCurScope(), TagDecl, SourceRange(TagDecl->getBeginLoc(), TagDecl->getEndLoc()));
+
+    // Leave the class scope.
+    ParsingDef.Pop();
+    ClassScope.Exit();
+
+    // Skip defer body
+    BalancedDelimiterTracker T(*this, tok::l_brace);
+    T.consumeOpen();
+    T.skipToEnd();
+
+    return;
+  }
+
   BalancedDelimiterTracker T(*this, tok::l_brace);
   T.consumeOpen();
 
